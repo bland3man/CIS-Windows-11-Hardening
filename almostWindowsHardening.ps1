@@ -1725,8 +1725,9 @@ net user Administrator /active:no
 Write-Host "Ensuring 'Limit local account use of blank passwords to console logon only' is enabled..."
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name "LimitBlankPasswordUse" -Value 1
 
+# !!! These you should choose your own custom name for both administrator and guest accounts !!!
 # CIS Benchmark 2.3.1.4 - Accounts: Rename administrator account
-Write-Host "Renaming 'Administrator' account to 'SNMD-Admin' and setting a secure password..."
+Write-Host "Renaming 'Administrator' account to 'Renamed-Admin' and setting a secure password..." # <-- Change Here
 
 # Generate a secure password
 $adminPassword = -join ((33..126) | Get-Random -Count 25 | ForEach-Object {[char]$_})
@@ -1736,33 +1737,33 @@ $secureAdminPassword = ConvertTo-SecureString $adminPassword -AsPlainText -Force
 secedit /export /cfg C:\Windows\Temp\secpol.cfg /quiet
 
 # Update administrator account rename setting
-((Get-Content C:\Windows\Temp\secpol.cfg) -replace 'NewAdministratorName =.*', 'NewAdministratorName = SNMD-Admin') | Set-Content C:\Windows\Temp\secpol.cfg
+((Get-Content C:\Windows\Temp\secpol.cfg) -replace 'NewAdministratorName =.*', 'NewAdministratorName = Renamed-Admin') | Set-Content C:\Windows\Temp\secpol.cfg # <-- Change Here
 
 # Apply the new security policy
 secedit /configure /db C:\Windows\security\local.sdb /cfg C:\Windows\Temp\secpol.cfg /quiet
 
 # Set the password for the new Administrator account
-net user SNMD-Admin $adminPassword
+net user Renamed-Admin $adminPassword # <-- Change Here
 
-Write-Host "Administrator account renamed to 'SNMD-Admin' and secured."
+Write-Host "Administrator account renamed to 'Renamed-Admin' and secured." # <-- Change Here
 
 # CIS Benchmark 2.3.1.5 - Accounts: Rename guest account
-Write-Host "Renaming 'Guest' account to 'SNMD-Guest' and setting a secure password..."
+Write-Host "Renaming 'Guest' account to 'Renamed-Guest' and setting a secure password..." # <-- Change Here
 
 # Generate a secure password for Guest
 $guestPassword = -join ((33..126) | Get-Random -Count 25 | ForEach-Object {[char]$_})
 $secureGuestPassword = ConvertTo-SecureString $guestPassword -AsPlainText -Force
 
 # Update guest account rename setting
-((Get-Content C:\Windows\Temp\secpol.cfg) -replace 'NewGuestName =.*', 'NewGuestName = SNMD-Guest') | Set-Content C:\Windows\Temp\secpol.cfg
+((Get-Content C:\Windows\Temp\secpol.cfg) -replace 'NewGuestName =.*', 'NewGuestName = Renamed-Guest') | Set-Content C:\Windows\Temp\secpol.cfg # <-- Change Here
 
 # Apply the updated policy
 secedit /configure /db C:\Windows\security\local.sdb /cfg C:\Windows\Temp\secpol.cfg /quiet
 
 # Set the password for the new Guest account
-net user SNMD-Guest $guestPassword
+net user Renamed-Guest $guestPassword # <-- Change Here
 
-Write-Host "Guest account renamed to 'SNMD-Guest' and secured."
+Write-Host "Guest account renamed to 'Renamed-Guest' and secured." # <-- Change Here
 
 ####################################################################################################################
 
@@ -2095,223 +2096,6 @@ Write-Host "Applying Group Policy update..."
 gpupdate /force
 Write-Host "Windows Update: Manage End User Experience configuration complete." -ForegroundColor Cyan
 
-##################################################################################################################
-<#
-# CIS Benchmark - 2.3.7.1 - 2.3.7.9
-Write-Host "Starting configurations for Interactive Logon - CIS Benchmark 2.3.7.1 - 2.3.7.9"
-
-# Define security policy export path
-$secpolPath = "C:\LOGS\Scripts\secpol.cfg"
-$secpolTxtPath = $secpolPath -replace '\.cfg$', '.txt'
-
-# Ensure directory exists
-if (-Not (Test-Path "C:\LOGS\Scripts")) {
-    New-Item -ItemType Directory -Path "C:\LOGS\Scripts" -Force | Out-Null
-}
-
-# ==============================
-# Step 1: Apply & Verify Registry Settings Before Moving to Secedit
-# ==============================
-
-# Interactive Logon Registry Settings
-$logonSettings = @(
-    @{ Name = "DisableCAD"; Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"; Value = 0; Type = "DWord" }
-    @{ Name = "DontDisplayLastUserName"; Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"; Value = 1; Type = "DWord" }
-    @{ Name = "InactivityTimeoutSecs"; Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"; Value = 900; Type = "DWord" }
-    @{ Name = "ScRemoveOption"; Path = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"; Value = 1; Type = "String"; Enforce = $true }
-    @{ Name = "PromptOnSecureDesktop"; Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"; Value = 14; Type = "DWord" }
-)
-
-# Windows 11-Only Settings
-if ($isWindows11) {
-    $logonSettings += @(
-        @{ Name = "CachedLogonsCount"; Path = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"; Value = "4"; Type = "String" }
-        @{ Name = "MaxCachedLogonCount"; Path = "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0"; Value = 10; Type = "DWord" }
-    )
-}
-
-# Fixing Legal Notice Text & Caption (Explicitly Required)
-$logonMessageText = "Unauthorized access is prohibited. By logging in, you agree to company policies."
-$logonMessageTitle = "Security Notice"
-
-$logonSettings += @(
-    @{ Name = "legalnoticetext"; Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"; Value = $logonMessageText; Type = "String" }
-    @{ Name = "legalnoticecaption"; Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"; Value = $logonMessageTitle; Type = "String" }
-)
-
-# Apply registry settings
-Write-Host "Applying Interactive Logon registry settings..."
-foreach ($setting in $logonSettings) {
-    # Ensure registry path exists
-    if (-not (Test-Path $setting.Path)) {
-        Write-Host "Creating registry path: $($setting.Path)"
-        New-Item -Path $setting.Path -Force | Out-Null
-    }
-
-    # Apply the setting
-    Write-Host "Setting $($setting.Name) to $($setting.Value)..."
-    Set-ItemProperty -Path $setting.Path -Name $setting.Name -Value $setting.Value -Type $setting.Type -Force
-}
-
-# ==============================
-# Step 2: Verify Registry Settings Before Secedit
-# ==============================
-
-Write-Host "Verifying registry settings before proceeding..."
-foreach ($setting in $logonSettings) {
-    $regValue = (Get-ItemProperty -Path $setting.Path -Name $setting.Name -ErrorAction SilentlyContinue).$($setting.Name)
-    if ($regValue -eq $setting.Value) {
-        Write-Host "Verified: $($setting.Name) is correctly set to $($setting.Value)" -ForegroundColor Green
-    } else {
-        Write-Host "WARNING: $($setting.Name) is incorrect! Expected: $($setting.Value), Found: $regValue" -ForegroundColor Red
-    }
-}
-
-# Apply registry modifications before moving to secpol settings
-Write-Host "Updating Group Policy..."
-gpupdate /force
-
-# ==============================
-# Step 3: Iterate Through Benchmarks - Export, Modify, and Apply secpol.cfg
-# ==============================
-
-# Define the security benchmarks to check in secpol.cfg
-$secpolBenchmarks = @(
-    @{ Path = "MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\System\legalnoticetext"; Value = "7,$logonMessageText" }
-    @{ Path = "MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\System\legalnoticecaption"; Value = "1,$logonMessageTitle" }
-    @{ Path = "MACHINE\Software\Microsoft\Windows NT\CurrentVersion\Winlogon\ScRemoveOption"; Value = "1,1" }
-
-)
-
-foreach ($benchmark in $secpolBenchmarks) {
-    Write-Host "Processing benchmark: $($benchmark.Path)"
-
-    # (A) Export current security policies
-    Write-Host "Exporting current security policies..."
-    secedit /export /cfg $secpolPath /quiet
-
-    if (!(Test-Path $secpolPath)) {
-        Write-Host "ERROR: Failed to export security policy!" -ForegroundColor Red
-        continue
-    }
-    Write-Host "Exported secpol.cfg: $secpolPath"
-
-    # (B) Rename .cfg to .txt for modification
-    if (Test-Path $secpolTxtPath) { Remove-Item -Path $secpolTxtPath -Force }
-    Rename-Item -Path $secpolPath -NewName $secpolTxtPath -Force
-    Write-Host "Renamed secpol.cfg to secpol.txt: $secpolTxtPath"
-
-    # (C) Modify secpol.txt (Ensure benchmark is correctly set)
-    $secpolContent = Get-Content $secpolTxtPath
-    $benchmarkPath = [regex]::Escape($benchmark.Path) # Properly escape for regex
-    $benchmarkValue = $benchmark.Value
-
-    # Check if the path exists in the [Registry Values] section
-    if ($secpolContent -match "^$benchmarkPath\s*=") {
-		# Path exists, check the value
-		$currentValue = $null  # Default to null in case the match fails
-		foreach ($line in $secpolContent) {
-			if ($line -match "^$benchmarkPath\s*=\s*""?(.+?)""?$") {
-				$currentValue = $matches[1] -replace '"', ''  # Remove all extra quotes added by secedit
-				break
-			}
-		}
-
-		# Normalize benchmark values by stripping quotes for accurate comparison
-		$normalizedBenchmarkValue = $benchmark.Value -replace '"', ''
-
-		if ($currentValue -eq $normalizedBenchmarkValue) {
-			Write-Host "Verified: $benchmarkPath is correctly set." -ForegroundColor Green
-		} else {
-			Write-Host "Updating: $benchmarkPath (Old Value: $currentValue, New Value: $normalizedBenchmarkValue)"
-
-			# Ensure proper value formatting before replacing in secpol.cfg
-			$correctedValue = if ($normalizedBenchmarkValue -match '^\d+,') { $normalizedBenchmarkValue } else { "1,$normalizedBenchmarkValue" }
-
-			$secpolContent = $secpolContent -replace "^$benchmarkPath\s*=\s*.+$", "$benchmarkPath=$correctedValue"
-		}
-
-    } else {
-        # Path does not exist, append it to [Registry Values]
-        Write-Host "Appending missing entry: $benchmarkPath=$benchmarkValue"
-
-        # Ensure correct value formatting before appending
-        $correctedValue = if ($benchmarkValue -match '^\d+,') { $benchmarkValue } else { "1,$benchmarkValue" }
-
-        $secpolContent += "`r`n$benchmarkPath=$correctedValue"
-    }
-
-    # (D) Save the modified secpol.txt
-    Set-Content -Path $secpolTxtPath -Value $secpolContent
-    Write-Host "Saved modified secpol.txt"
-
-    # (E) Rename .txt back to .cfg
-    if (Test-Path $secpolPath) { Remove-Item -Path $secpolPath -Force }
-    Rename-Item -Path $secpolTxtPath -NewName $secpolPath -Force
-    Write-Host "Renamed secpol.txt to secpol.cfg: $secpolPath"
-
-    # (F) Apply the updated security policy
-    Write-Host "Applying updated security policies..."
-    secedit /configure /db c:\windows\security\local.sdb /cfg $secpolPath /quiet
-
-    # (G) Wait 5 seconds
-    Start-Sleep -Seconds 5
-
-    # (H) Delete secpol.cfg
-    Remove-Item -Path $secpolPath -Force
-    Write-Host "Cleanup complete. Proceeding to next benchmark..."
-}
-
-# ==============================
-# Step 4: Final Verification & Policy Update
-# ==============================
-
-# Run final gpupdate
-Write-Host "Applying Group Policy updates..."
-gpupdate /force
-
-# Perform final secpol export for verification
-Write-Host "Final security policy verification..."
-secedit /export /cfg $secpolPath /quiet
-
-if (!(Test-Path $secpolPath)) {
-    Write-Host "ERROR: Failed to export final security policy!" -ForegroundColor Red
-    exit 1
-}
-
-# Read the final exported secpol.cfg
-$finalSecpolContent = Get-Content $secpolPath
-
-foreach ($benchmark in $secpolBenchmarks) {
-    # Normalize benchmark values by stripping quotes for accurate comparison
-    $normalizedBenchmarkValue = $benchmark.Value -replace '"', ''
-
-    # Extract the value from secpol.cfg, strip quotes, and compare
-    $matchedValue = $null
-    foreach ($line in $finalSecpolContent) {
-        if ($line -match "^$([regex]::Escape($benchmark.Path))\s*=\s*""?(.+?)""?$") {
-            $matchedValue = $matches[1] -replace '"', ''  # Remove quotes
-            break
-        }
-    }
-
-    if ($matchedValue -eq $normalizedBenchmarkValue) {
-        Write-Host "Final Verification: $($benchmark.Path) is correctly set." -ForegroundColor Green
-    } else {
-        Write-Host "WARNING: $($benchmark.Path) is missing or incorrect in secpol.cfg!" -ForegroundColor Red
-    }
-}
-
-# Cleanup final exported secpol.cfg
-Remove-Item -Path $secpolPath -Force
-
-Write-Host "Interactive logon security settings applied and verified successfully!" -ForegroundColor Green
-
-# Force Group Policy update
-Write-Host "Applying Group Policy update..."
-gpupdate /force
-Write-Host "Windows Update: Manage End User Experience configuration complete." -ForegroundColor Cyan
-#>
 ###########################################################################################################################
 #
 # ==============================
